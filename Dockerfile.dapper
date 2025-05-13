@@ -21,12 +21,14 @@ ARG DOWNLOADS
 COPY --from=ubuntu ${DOWNLOADS}/ ${DOWNLOADS}/
 RUN apt-get --assume-yes update \
  && apt-get --assume-yes install --no-install-recommends --upgrade \
+    autoconf \
     bc \
     bison \
     ccache \
     cpio \
     dkms \
     dwarves \
+    dwarfdump \
     fakeroot \
     flex \
     gawk  \
@@ -44,6 +46,8 @@ RUN apt-get --assume-yes update \
     libudev-dev \
     linux-libc-dev \
     locales \
+    llvm \
+    openssl \
     rsync \
     vim \
     zstd \

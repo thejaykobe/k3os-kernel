@@ -1,46 +1,54 @@
-ARG APT_GCC=library/gcc:9.2
-
-FROM library/ubuntu:bionic AS bionic
+ARG BUILD=library/buildpack-deps:noble
+ARG UBUNTU=library/ubuntu:noble
 ARG DOWNLOADS=/usr/src/downloads
-ARG LINUX_FIRMWARE=linux-firmware=1.173.18
-ARG LINUX_SOURCE=linux-source-5.0.0=5.0.0-47.51~18.04.1
 
+FROM ${UBUNTU} AS ubuntu
+ARG DOWNLOADS
 ENV DEBIAN_FRONTEND=noninteractive
-RUN set -x \
- && apt-get --assume-yes update \
- && apt-get --assume-yes download \
-    ${LINUX_FIRMWARE} \
-    ${LINUX_SOURCE} \
- && mkdir -vp ${DOWNLOADS} \
- && mv -vf linux-firmware* ${DOWNLOADS}/ubuntu-firmware.deb \
- && mv -vf linux-source* ${DOWNLOADS}/ubuntu-kernel.deb
+RUN set -x
+RUN echo "deb-src http://in.archive.ubuntu.com/ubuntu noble main restricted" >> /etc/apt/sources.list
+RUN apt-get --assume-yes update
 
-FROM ${APT_GCC}
-ARG DOWNLOADS=/usr/src/downloads
-# Wireguard support, included in Linux in 5.6+
-ARG WG_URL="https://git.zx2c4.com"
-ARG WG_REPO="wireguard-linux-compat"
-ARG WG_TAG=v1.0.20200413
-COPY --from=bionic ${DOWNLOADS}/ ${DOWNLOADS}/
-RUN apt-get update \
- && apt-get install -y \
-    kernel-wedge \
-    libncurses-dev \
-    fakeroot \
-    cpio \
-    bison \
-    flex \
-    ccache \
-    vim \
-    gnupg2 \
-    locales \
+ARG LINUX_FIRMWARE=linux-firmware=20240318.git3b128b60-0ubuntu2
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get --assume-yes download ${LINUX_FIRMWARE}
+RUN mkdir -vp ${DOWNLOADS} && mv -vf linux-firmware* ${DOWNLOADS}/ubuntu-firmware.deb
+
+FROM ${BUILD}
+ARG DOWNLOADS
+COPY --from=ubuntu ${DOWNLOADS}/ ${DOWNLOADS}/
+RUN apt-get --assume-yes update \
+ && apt-get --assume-yes install --no-install-recommends --upgrade \
     bc \
-    kmod \
-    libelf-dev \
-    rsync \
+    bison \
+    ccache \
+    cpio \
+    dkms \
+    fakeroot \
+    flex \
     gawk  \
+    gcc-13 \
+    rustc-1.74 \
+    rustfmt-1.74 \
+    bindgen-0.65 \
+    gnupg2 \
+    kernel-wedge \
+    kmod \
+    less \
+    libelf-dev \
+    libiberty-dev \
+    liblz4-tool \
+    libncurses-dev \
+    libpci-dev \
+    libssl-dev \
     libudev-dev \
-    pciutils-dev \
+    linux-libc-dev \
+    locales \
+    rsync \
+    vim \
+    nano \ 
+    git \
+    zstd \
  && rm -f /bin/sh && ln -s /bin/bash /bin/sh
 
 ########## Dapper Configuration #####################
@@ -48,18 +56,17 @@ RUN apt-get update \
 ENV DAPPER_ENV VERSION DEBUG
 ENV DAPPER_DOCKER_SOCKET true
 ENV DAPPER_SOURCE /source
-ENV DAPPER_OUTPUT ./dist ./build
+ENV DAPPER_OUTPUT ./dist
 ENV DAPPER_RUN_ARGS --privileged
-ENV SHELL /bin/bash
+ENV EDITOR=vim \
+    PAGER=less \
+    SHELL=/bin/bash
 WORKDIR ${DAPPER_SOURCE}
 
 ########## General Configuration #####################
 ARG DAPPER_HOST_ARCH
 ENV ARCH $DAPPER_HOST_ARCH
 ENV DOWNLOADS ${DOWNLOADS}
-ENV WG_URL=${WG_URL}
-ENV WG_REPO=${WG_REPO}
-ENV WG_TAG=${WG_TAG}
 
 ENTRYPOINT ["./scripts/entry"]
 CMD ["ci"]

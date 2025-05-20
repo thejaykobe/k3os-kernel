@@ -4,33 +4,22 @@ set -e
 source $(dirname $0)/version
 cd $(dirname $0)/..
 
+set -x
+
 mkdir -p ${DOWNLOADS}/kernel ${DOWNLOADS}/firmware
 
 # kernel
-mkdir -p build/kernel
-dpkg-deb -x ${DOWNLOADS}/ubuntu-kernel.deb ${DOWNLOADS}/kernel
-rsync -a ${DOWNLOADS}/kernel/usr/src/linux-source-*/debian* ./build/kernel/
-tar xf ${DOWNLOADS}/kernel/usr/src/linux-source-*/linux-source*.tar.bz2 -C ./build/kernel/. --strip-components=1
-
-## firmware
-#mkdir -p build/firmware
-#dpkg-deb -x ${DOWNLOADS}/ubuntu-firmware.deb ${DOWNLOADS}/firmware
-#rsync -a ${DOWNLOADS}/firmware/lib/firmware/* ./build/firmware/
+mkdir -p /source/build/ && cd /source/build/
+git clone --depth 1 https://git.launchpad.net/~ubuntu-kernel/ubuntu/+source/linux/+git/noble/ kernel -b Ubuntu-6.8.0-31.31
 
 # patches
-PATCHES_DIR=$(pwd)/patches
-pushd build/kernel
-for p in $(find ${PATCHES_DIR} -name "*.patch"); do
+if [ -n "${NOPATCHES}" ]; then
+    exit 0
+fi
+PATCHES_DIR=/source/patches
+pushd kernel
+for p in `find ${PATCHES_DIR} -name "*.patch"`; do
     echo "applying $p"
     patch -p1 -i $p
 done
-
-# https://www.wireguard.com/compilation/
-WG_DIR=$(mktemp -d)
-git clone "${WG_URL}/${WG_REPO}" -b "$WG_TAG" "$WG_DIR"
-"${WG_DIR}/kernel-tree-scripts/create-patch.sh" | patch -p1
-CONFIG="debian.hwe/config/config.common.ubuntu"
-echo CONFIG_WIREGUARD=m >>$CONFIG
-echo CONFIG_WIREGUARD_DEBUG=n >>$CONFIG
-
 popd

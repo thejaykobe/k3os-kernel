@@ -9,7 +9,7 @@ RUN set -x
 RUN echo "deb-src http://in.archive.ubuntu.com/ubuntu noble main restricted" >> /etc/apt/sources.list
 RUN apt-get --assume-yes update
 
-ARG LINUX_FIRMWARE=linux-firmware=20240318.git3b128b60-0ubuntu2
+ARG LINUX_FIRMWARE=linux-firmware=20240318.git3b128b60-0ubuntu2.12
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get --assume-yes download ${LINUX_FIRMWARE}
 RUN mkdir -vp ${DOWNLOADS} && mv -vf linux-firmware* ${DOWNLOADS}/ubuntu-firmware.deb

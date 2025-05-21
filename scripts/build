@@ -4,7 +4,7 @@ set -e
 source $(dirname $0)/version
 cd $(dirname $0)/..
 
-KERNEL_DIR=/source/build/kernel
+KERNEL_DIR=build/kernel
 
 # some hacking
 mkdir -p ${KERNEL_DIR}/debian/stamps
@@ -15,11 +15,12 @@ chmod a+x ${KERNEL_DIR}/debian*/scripts/misc/*
 pushd ${KERNEL_DIR}
 unset -v ARCH KERNEL_DIR
 debian/rules clean
-fakeroot debian/rules binary-headers binary-generic \
+# see https://wiki.ubuntu.com/KernelTeam/KernelMaintenance#Overriding_module_check_failures
+debian/rules binary-headers binary-generic \
     do_zfs=false \
     do_dkms_nvidia=false \
     do_dkms_nvidia_server=false \
 	skipabi=true \
 	skipmodule=true \
-	skipretpoline=true -i
+	skipretpoline=true
 popd

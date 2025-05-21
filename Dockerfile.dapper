@@ -1,18 +1,20 @@
-ARG BUILD=library/buildpack-deps:noble
-ARG UBUNTU=library/ubuntu:noble
+ARG BUILD=library/buildpack-deps:jammy
+ARG UBUNTU=library/ubuntu:jammy
 ARG DOWNLOADS=/usr/src/downloads
 
 FROM ${UBUNTU} AS ubuntu
 ARG DOWNLOADS
+ARG LINUX_FIRMWARE=linux-firmware=20220329.git681281e4-0ubuntu1
+ARG LINUX_SOURCE=linux-source-5.15.0 5.15.0-140.150
 ENV DEBIAN_FRONTEND=noninteractive
-RUN set -x
-RUN echo "deb-src http://in.archive.ubuntu.com/ubuntu noble main restricted" >> /etc/apt/sources.list
-RUN apt-get --assume-yes update
-
-ARG LINUX_FIRMWARE=linux-firmware=20240318.git3b128b60-0ubuntu2.11
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get --assume-yes download ${LINUX_FIRMWARE}
-RUN mkdir -vp ${DOWNLOADS} && mv -vf linux-firmware* ${DOWNLOADS}/ubuntu-firmware.deb
+RUN set -x \
+ && apt-get --assume-yes update \
+ && apt-get --assume-yes download \
+    ${LINUX_FIRMWARE} \
+    ${LINUX_SOURCE} \
+ && mkdir -vp ${DOWNLOADS} \
+ && mv -vf linux-firmware* ${DOWNLOADS}/ubuntu-firmware.deb \
+ && mv -vf linux-source* ${DOWNLOADS}/ubuntu-kernel.deb
 
 FROM ${BUILD}
 ARG DOWNLOADS
@@ -24,13 +26,11 @@ RUN apt-get --assume-yes update \
     ccache \
     cpio \
     dkms \
+    dwarves \
     fakeroot \
     flex \
     gawk  \
-    gcc-13 \
-    rustc-1.74 \
-    rustfmt-1.74 \
-    bindgen-0.65 \
+    gcc-9 \
     gnupg2 \
     kernel-wedge \
     kmod \
@@ -46,8 +46,6 @@ RUN apt-get --assume-yes update \
     locales \
     rsync \
     vim \
-    nano \ 
-    git \
     zstd \
  && rm -f /bin/sh && ln -s /bin/bash /bin/sh
 
@@ -56,7 +54,7 @@ RUN apt-get --assume-yes update \
 ENV DAPPER_ENV VERSION DEBUG
 ENV DAPPER_DOCKER_SOCKET true
 ENV DAPPER_SOURCE /source
-ENV DAPPER_OUTPUT ./dist
+ENV DAPPER_OUTPUT ./dist ./build
 ENV DAPPER_RUN_ARGS --privileged
 ENV EDITOR=vim \
     PAGER=less \

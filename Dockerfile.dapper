@@ -4,13 +4,8 @@ ARG DOWNLOADS=/usr/src/downloads
 
 FROM ${UBUNTU} AS ubuntu
 ARG DOWNLOADS
-<<<<<<< Updated upstream
-ARG LINUX_FIRMWARE=linux-firmware=20220329.git681281e4-0ubuntu3.30
-ARG LINUX_SOURCE=linux-source-5.15.0=5.15.0-106.116
-=======
 ARG LINUX_FIRMWARE=linux-firmware=20220329.git681281e4-0ubuntu3.40
-ARG LINUX_SOURCE=linux-source-5.15.0=5.15.0-161
->>>>>>> Stashed changes
+ARG LINUX_SOURCE=linux-source-5.15.0=5.15.0-161.171
 ENV DEBIAN_FRONTEND=noninteractive
 RUN set -x \
  && apt-get --assume-yes update \

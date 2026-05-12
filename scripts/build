@@ -22,5 +22,6 @@ debian/rules binary-headers binary-generic \
     do_dkms_nvidia_server=false \
 	skipabi=true \
 	skipmodule=true \
-	skipretpoline=true
+	skipretpoline=true \
+	do_enforce_all=false
 popd

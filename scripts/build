@@ -13,11 +13,27 @@ chmod a+x ${KERNEL_DIR}/debian*/scripts/misc/*
 
 # Annotations may list vendor/ODM CONFIG options (e.g. UBUNTU_ODM_DRIVERS, AAEON_*)
 # that aren't reachable in our generic .config. There's no make switch to skip
-# this check; replace the perl checker with a no-op to match the spirit of
-# skipabi/skipmodule. Leave debian/scripts/misc/annotations alone — it is also
-# used to generate the .config, not just check it.
+# this check, so neutralize the checkers — same spirit as skipabi/skipmodule.
+# - debian/scripts/config-check (perl) is purely a checker → stub it outright.
+# - debian/scripts/misc/annotations (python) is also used to *generate* the
+#   .config during prepare-tree, so we wrap it: --check returns 0, anything
+#   else defers to the real script.
 printf '#!/usr/bin/perl\nexit 0;\n' > ${KERNEL_DIR}/debian/scripts/config-check
 chmod a+x ${KERNEL_DIR}/debian/scripts/config-check
+
+ANN=${KERNEL_DIR}/debian/scripts/misc/annotations
+if [ -f "${ANN}" ] && ! [ -f "${ANN}.real" ]; then
+    mv "${ANN}" "${ANN}.real"
+    cat > "${ANN}" <<'EOF'
+#!/usr/bin/env python3
+import os, sys
+if '--check' in sys.argv:
+    sys.exit(0)
+real = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'annotations.real')
+os.execv(real, [real] + sys.argv[1:])
+EOF
+    chmod a+x "${ANN}"
+fi
 
 # kernel
 pushd ${KERNEL_DIR}

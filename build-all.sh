@@ -67,6 +67,8 @@ mkdir -p dist/artifacts build
 for arch in "${ARCHES[@]}"; do
     platform=${PLATFORM[$arch]}
     image=k3os-kernel-builder:${arch}
+    build_vol=k3os-kernel-build-${arch}
+    dist_vol=k3os-kernel-dist-${arch}
     echo
     echo "==============================================================="
     echo "==> building ${arch} (${platform})"
@@ -79,9 +81,13 @@ for arch in "${ARCHES[@]}"; do
         -t "${image}" \
         -f Dockerfile.dapper .
 
-    # Clean dist/build for this arch to keep artifact sets separate.
-    rm -rf build dist/generic
-    mkdir -p build
+    # Use Docker-managed volumes for build/ and dist/ so heavy tar extractions
+    # land on ext4 inside the Docker VM. On macOS bind mounts (VirtioFS /
+    # gRPC-FUSE), tar fails with "Directory renamed before its status could be
+    # extracted". Reset volumes each run to keep arch outputs isolated.
+    docker volume rm -f "${build_vol}" "${dist_vol}" >/dev/null 2>&1 || true
+    docker volume create "${build_vol}" >/dev/null
+    docker volume create "${dist_vol}" >/dev/null
 
     docker run --rm --privileged \
         --platform "${platform}" \
@@ -92,26 +98,22 @@ for arch in "${ARCHES[@]}"; do
         -e GIT_CONFIG_KEY_0=safe.directory \
         -e GIT_CONFIG_VALUE_0='*' \
         -v "$(pwd)":/source \
+        -v "${build_vol}:/source/build" \
+        -v "${dist_vol}:/source/dist" \
         -w /source \
         "${image}" ci
 
+    # Pull artifacts out of the dist volume onto the host bind mount.
     out=dist/artifacts/${arch}
     rm -rf "${out}"
     mkdir -p "${out}"
-    # scripts/package writes per-arch tarballs into dist/artifacts/ at top level
-    # since the same source tree is reused; move them under per-arch dirs.
-    shopt -s nullglob
-    moved=0
-    for f in dist/artifacts/*_${arch}.tar.xz dist/artifacts/*.tar.xz; do
-        [ -f "$f" ] || continue
-        case "$f" in
-            dist/artifacts/${arch}/*) continue ;;
-        esac
-        mv -f "$f" "${out}/"
-        moved=$((moved + 1))
-    done
-    shopt -u nullglob
-    echo "==> wrote ${moved} artifact(s) to ${out}"
+    docker run --rm \
+        --platform "${platform}" \
+        -v "${dist_vol}:/dist" \
+        -v "$(pwd)/${out}:/out" \
+        "${image}" \
+        bash -c 'cp -a /dist/artifacts/. /out/'
+    echo "==> wrote artifact(s) to ${out}"
 done
 
 echo

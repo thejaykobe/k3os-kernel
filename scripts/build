@@ -11,6 +11,17 @@ mkdir -p ${KERNEL_DIR}/debian/stamps
 chmod a+x ${KERNEL_DIR}/debian*/scripts/*
 chmod a+x ${KERNEL_DIR}/debian*/scripts/misc/*
 
+# Annotations may list vendor/ODM CONFIG options (e.g. UBUNTU_ODM_DRIVERS, AAEON_*)
+# that aren't reachable in our generic .config. There's no make switch to skip
+# this check; replace both checkers with no-ops to match the spirit of
+# skipabi/skipmodule.
+printf '#!/usr/bin/perl\nexit 0;\n' > ${KERNEL_DIR}/debian/scripts/config-check
+chmod a+x ${KERNEL_DIR}/debian/scripts/config-check
+if [ -f ${KERNEL_DIR}/debian/scripts/misc/annotations ]; then
+    printf '#!/usr/bin/env python3\nimport sys\nsys.exit(0)\n' > ${KERNEL_DIR}/debian/scripts/misc/annotations
+    chmod a+x ${KERNEL_DIR}/debian/scripts/misc/annotations
+fi
+
 # kernel
 pushd ${KERNEL_DIR}
 unset -v ARCH KERNEL_DIR

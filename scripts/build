@@ -26,9 +26,73 @@ if [ -f "${ANN}" ] && ! [ -f "${ANN}.real" ]; then
     mv "${ANN}" "${ANN}.real"
     cat > "${ANN}" <<'EOF'
 #!/usr/bin/env python3
-import os, sys
-if '--check' in sys.argv:
+"""
+Wrapper around the upstream debian/scripts/misc/annotations.
+
+On --check we (a) skip the strict annotations-vs-.config diff so vendor/ODM
+options absent from our build don't fail, and (b) opportunistically disable
+kernel subsystems for which this kernel has no upstream CVE fix:
+  CONFIG_CRYPTO_USER_API_AEAD  CVE-2026-31431 Copy Fail (algif_aead)
+  CONFIG_INET_ESP              CVE-2026-43284 Dirty Frag (esp4)
+  CONFIG_INET6_ESP             CVE-2026-43284 Dirty Frag (esp6)
+  CONFIG_AF_RXRPC              CVE-2026-43500 Dirty Frag (rxrpc)
+Any other invocation defers to the real script (used for .config generation).
+"""
+import os, re, subprocess, sys
+
+CVE_DISABLE = {
+    'CONFIG_CRYPTO_USER_API_AEAD',
+    'CONFIG_INET_ESP',
+    'CONFIG_INET6_ESP',
+    'CONFIG_AF_RXRPC',
+}
+ARCH_MAP = {'amd64': 'x86', 'i386': 'x86', 'arm64': 'arm64', 'armhf': 'arm'}
+
+def disable(cfg_path, names):
+    on_pat  = re.compile(r'^(CONFIG_[A-Z0-9_]+)(=|\s)')
+    off_pat = re.compile(r'^# (CONFIG_[A-Z0-9_]+) is not set')
+    with open(cfg_path) as f:
+        lines = f.readlines()
+    seen, out = set(), []
+    for line in lines:
+        m = on_pat.match(line)
+        if m and m.group(1) in names:
+            out.append('# %s is not set\n' % m.group(1)); seen.add(m.group(1)); continue
+        m = off_pat.match(line)
+        if m and m.group(1) in names:
+            seen.add(m.group(1))
+        out.append(line)
+    for n in names - seen:
+        out.append('# %s is not set\n' % n)
+    with open(cfg_path, 'w') as f:
+        f.writelines(out)
+
+argv = sys.argv
+if '--check' in argv:
+    try:
+        cfg = argv[argv.index('--check') + 1]
+        arch = argv[argv.index('--arch') + 1] if '--arch' in argv else None
+        if cfg and os.path.isfile(cfg):
+            disable(cfg, CVE_DISABLE)
+            builddir = os.path.dirname(os.path.abspath(cfg))
+            srcdir = os.path.abspath(os.path.join(builddir, '..', '..', '..'))
+            env = os.environ.copy()
+            karch = ARCH_MAP.get(arch)
+            if karch:
+                env['ARCH'] = karch
+            subprocess.run(
+                ['make', '-C', srcdir,
+                 'O=' + os.path.relpath(builddir, srcdir),
+                 'olddefconfig'],
+                env=env, check=False,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+    except (IndexError, ValueError, OSError):
+        pass
     sys.exit(0)
+
 real = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'annotations.real')
 os.execv(real, [real] + sys.argv[1:])
 EOF
@@ -37,52 +101,17 @@ fi
 
 # kernel
 pushd ${KERNEL_DIR}
-SAVE_ARCH="${ARCH}"
 unset -v ARCH KERNEL_DIR
-
-DEBIAN_RULES_FLAGS=(
-    do_zfs=false
-    do_dkms_nvidia=false
-    do_dkms_nvidia_server=false
-    skipabi=true
-    skipmodule=true
-    skipretpoline=true
-    do_enforce_all=false
-)
-
 debian/rules clean
-
-# Materialize .config from annotations *without* starting the binary build,
-# so we can apply CVE-mitigation config overrides for kernel subsystems that
-# have no upstream fix in this iteration:
-#   CONFIG_CRYPTO_USER_API_AEAD — CVE-2026-31431 (Copy Fail, algif_aead)
-#   CONFIG_INET_ESP            — CVE-2026-43284 (Dirty Frag, esp4)
-#   CONFIG_INET6_ESP           — CVE-2026-43284 (Dirty Frag, esp6)
-#   CONFIG_AF_RXRPC            — CVE-2026-43500 (Dirty Frag, rxrpc)
-debian/rules debian/stamps/stamp-prepare-tree-generic "${DEBIAN_RULES_FLAGS[@]}"
-
-BUILD_CONFIG=debian/build/build-generic/.config
-if [ -f "${BUILD_CONFIG}" ]; then
-    ./scripts/config --file "${BUILD_CONFIG}" \
-        --disable CRYPTO_USER_API_AEAD \
-        --disable INET_ESP \
-        --disable INET6_ESP \
-        --disable AF_RXRPC
-
-    # Resolve dependencies in the modified .config. olddefconfig needs ARCH
-    # set to the *kernel* arch (not the dapper/host arch label).
-    case "${SAVE_ARCH}" in
-        amd64) export ARCH=x86 ;;
-        arm64) export ARCH=arm64 ;;
-        arm)   export ARCH=arm ;;
-    esac
-    yes '' | make O=debian/build/build-generic olddefconfig
-    unset -v ARCH
-
-    # Keep the stamp newer than .config so binary-generic doesn't redo prepare.
-    touch debian/stamps/stamp-prepare-tree-generic
-fi
-
 # see https://wiki.ubuntu.com/KernelTeam/KernelMaintenance#Overriding_module_check_failures
-debian/rules binary-headers binary-generic "${DEBIAN_RULES_FLAGS[@]}"
+# CVE config disables are applied by the annotations --check wrapper above,
+# which runs after .config is materialized and before the binary compile.
+debian/rules binary-headers binary-generic \
+    do_zfs=false \
+    do_dkms_nvidia=false \
+    do_dkms_nvidia_server=false \
+	skipabi=true \
+	skipmodule=true \
+	skipretpoline=true \
+	do_enforce_all=false
 popd

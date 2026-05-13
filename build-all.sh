@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
-# Build the k3OS kernel for amd64, arm64, and arm (armhf) on the host.
+# Build the k3OS kernel for amd64 and arm64 on the host.
 # Runs the same docker/buildx flow used by .github/workflows/build.yml so
 # local results match CI artifacts.
 #
 # Usage:
-#   ./build-all.sh                # build all three arches
-#   ./build-all.sh amd64 arm64    # build a subset
+#   ./build-all.sh                # build both arches
+#   ./build-all.sh amd64          # one arch
 #
 # Requirements:
 #   - docker with buildx
-#   - tonistiigi/binfmt or qemu-user-static for emulating non-host arches
+#   - tonistiigi/binfmt or qemu-user-static for emulating the non-host arch
 #
 # Output:
 #   ./dist/artifacts/<arch>/      # per-arch kernel/headers/extras tarballs
@@ -22,18 +22,17 @@ cd "$(dirname "$0")"
 declare -A PLATFORM=(
     [amd64]=linux/amd64
     [arm64]=linux/arm64
-    [arm]=linux/arm/v7
 )
 
-ARCHES=("${@:-amd64 arm64 arm}")
-# Re-split if invoked with no args; default expanded as a single string.
 if [ "$#" -eq 0 ]; then
-    ARCHES=(amd64 arm64 arm)
+    ARCHES=(amd64 arm64)
+else
+    ARCHES=("$@")
 fi
 
 for arch in "${ARCHES[@]}"; do
     if [ -z "${PLATFORM[$arch]:-}" ]; then
-        echo "unknown arch: $arch (valid: amd64 arm64 arm)" >&2
+        echo "unknown arch: $arch (valid: amd64 arm64)" >&2
         exit 2
     fi
 done

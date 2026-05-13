@@ -25,14 +25,8 @@ jobs:
         include:
           - arch: amd64
             runner: ubuntu-22.04
-            emulated: false
           - arch: arm64
             runner: ubuntu-22.04-arm
-            emulated: false
-          - arch: arm
-            runner: ubuntu-22.04
-            emulated: true
-            platform: linux/arm/v7
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
     steps:
@@ -41,46 +35,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up QEMU
-        if: matrix.emulated
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build kernel via dapper (native)
-        if: ${{ !matrix.emulated }}
+      - name: Build kernel via dapper
         run: make ci
-
-      - name: Build kernel via docker (emulated ${{ matrix.platform }})
-        if: matrix.emulated
-        env:
-          PLATFORM: ${{ matrix.platform }}
-          ARCH: ${{ matrix.arch }}
-        run: |
-          set -euo pipefail
-
-          docker buildx build \
-            --platform "${PLATFORM}" \
-            --build-arg DAPPER_HOST_ARCH="${ARCH}" \
-            --load \
-            -t k3os-kernel-builder:${ARCH} \
-            -f Dockerfile.dapper .
-
-          mkdir -p dist build
-          docker run --rm --privileged \
-            --platform "${PLATFORM}" \
-            -e ARCH="${ARCH}" \
-            -e DAPPER_UID="$(id -u)" \
-            -e DAPPER_GID="$(id -g)" \
-            -e GIT_CONFIG_COUNT=1 \
-            -e GIT_CONFIG_KEY_0=safe.directory \
-            -e GIT_CONFIG_VALUE_0='*' \
-            -v "$(pwd)":/source \
-            -w /source \
-            k3os-kernel-builder:${ARCH} ci
 
       - name: Show artifacts
         run: ls -lah dist/artifacts || true

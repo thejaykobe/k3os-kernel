@@ -1,0 +1,101 @@
+name: kernel-version-check
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve latest Jammy kernel and firmware versions
+        id: latest
+        run: |
+          set -euo pipefail
+          sudo rm -f /etc/apt/sources.list.d/*.list
+          cat <<'EOF' | sudo tee /etc/apt/sources.list.d/jammy.list >/dev/null
+          deb http://archive.ubuntu.com/ubuntu jammy main restricted universe multiverse
+          deb http://archive.ubuntu.com/ubuntu jammy-updates main restricted universe multiverse
+          deb http://archive.ubuntu.com/ubuntu jammy-security main restricted universe multiverse
+          EOF
+          sudo apt-get update -qq
+
+          firmware=$(apt-cache madison linux-firmware | awk 'NR==1{print $3}')
+          source=$(apt-cache madison linux-source-5.15.0 | awk 'NR==1{print $3}')
+
+          if [ -z "$firmware" ] || [ -z "$source" ]; then
+            echo "::error::Failed to resolve package versions (firmware=$firmware source=$source)"
+            exit 1
+          fi
+
+          echo "firmware=$firmware" >> "$GITHUB_OUTPUT"
+          echo "source=$source"     >> "$GITHUB_OUTPUT"
+          echo "Resolved firmware=$firmware source=$source"
+
+      - name: Read current pinned versions
+        id: current
+        run: |
+          set -euo pipefail
+          current_firmware=$(sed -n 's/^ARG LINUX_FIRMWARE=linux-firmware=\(.*\)$/\1/p' Dockerfile.dapper)
+          current_source=$(sed -n 's/^ARG LINUX_SOURCE=linux-source-5.15.0=\(.*\)$/\1/p' Dockerfile.dapper)
+          echo "firmware=$current_firmware" >> "$GITHUB_OUTPUT"
+          echo "source=$current_source"     >> "$GITHUB_OUTPUT"
+          echo "Pinned firmware=$current_firmware source=$current_source"
+
+      - name: Determine if update needed
+        id: diff
+        run: |
+          if [ "${{ steps.latest.outputs.firmware }}" = "${{ steps.current.outputs.firmware }}" ] \
+             && [ "${{ steps.latest.outputs.source }}" = "${{ steps.current.outputs.source }}" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Apply version bump
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          sed -i "s|^ARG LINUX_FIRMWARE=linux-firmware=.*|ARG LINUX_FIRMWARE=linux-firmware=${{ steps.latest.outputs.firmware }}|" Dockerfile.dapper
+          sed -i "s|^ARG LINUX_SOURCE=linux-source-5.15.0=.*|ARG LINUX_SOURCE=linux-source-5.15.0=${{ steps.latest.outputs.source }}|" Dockerfile.dapper
+
+          {
+            echo "Updates include:"
+            echo
+            echo "# $(date -u +%Y-%m-%d)"
+            echo "ARG LINUX_FIRMWARE=linux-firmware=${{ steps.latest.outputs.firmware }}"
+            echo "ARG LINUX_SOURCE=linux-source-5.15.0=${{ steps.latest.outputs.source }}"
+            echo
+            echo "# Previous"
+            echo "ARG LINUX_FIRMWARE=linux-firmware=${{ steps.current.outputs.firmware }}"
+            echo "ARG LINUX_SOURCE=linux-source-5.15.0=${{ steps.current.outputs.source }}"
+          } > UPDATES.md
+
+      - name: Open or update pull request
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: automated/kernel-version-bump
+          commit-message: |
+            bump kernel to ${{ steps.latest.outputs.source }}, firmware to ${{ steps.latest.outputs.firmware }}
+          title: "Bump Jammy kernel to ${{ steps.latest.outputs.source }}"
+          body: |
+            Automated bump triggered by `kernel-version-check`.
+
+            | Package | Previous | Latest |
+            | --- | --- | --- |
+            | linux-source-5.15.0 | `${{ steps.current.outputs.source }}` | `${{ steps.latest.outputs.source }}` |
+            | linux-firmware | `${{ steps.current.outputs.firmware }}` | `${{ steps.latest.outputs.firmware }}` |
+
+            Source: `archive.ubuntu.com` jammy / jammy-updates / jammy-security.
+          labels: |
+            automation
+            kernel

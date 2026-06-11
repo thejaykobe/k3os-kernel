@@ -1,0 +1,39 @@
+name: Build kernel
+description: Build the k3os kernel via dapper and upload artifacts.
+inputs:
+  arch:
+    description: Architecture (amd64 or arm64) — used in the artifact name.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Free disk space
+      continue-on-error: true
+      uses: jlumbroso/free-disk-space@main
+      with:
+        tool-cache: true
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        docker-images: false
+        swap-storage: true
+
+    - name: Build kernel via dapper
+      shell: bash
+      run: make ci
+
+    - name: Show artifacts
+      shell: bash
+      run: ls -lah dist/artifacts || true
+
+    - name: Upload kernel artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: kernel-${{ inputs.arch }}
+        path: dist/artifacts/
+        if-no-files-found: error
+        retention-days: 14

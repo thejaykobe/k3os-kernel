@@ -17,45 +17,56 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: build-${{ matrix.arch }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-22.04
-          - arch: arm64
-            runner: ubuntu-22.04-arm
-    runs-on: ${{ matrix.runner }}
+  build-amd64-self-hosted:
+    name: build-amd64 (self-hosted)
+    runs-on: [self-hosted, Linux, X64]
+    continue-on-error: true
     timeout-minutes: 360
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build kernel via dapper
-        run: make ci
-
-      - name: Show artifacts
-        run: ls -lah dist/artifacts || true
-
-      - name: Upload kernel artifacts
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/build-kernel
         with:
-          name: kernel-${{ matrix.arch }}
-          path: dist/artifacts/
-          if-no-files-found: error
-          retention-days: 14
+          arch: amd64
+
+  build-amd64-fallback:
+    name: build-amd64 (GHA fallback)
+    needs: build-amd64-self-hosted
+    if: always() && needs.build-amd64-self-hosted.result != 'success'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/build-kernel
+        with:
+          arch: amd64
+
+  build-arm64:
+    name: build-arm64
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/build-kernel
+        with:
+          arch: arm64
 
   release:
     name: release
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-amd64-self-hosted, build-amd64-fallback, build-arm64]
+    if: |
+      !cancelled() &&
+      startsWith(github.ref, 'refs/tags/') &&
+      needs.build-arm64.result == 'success' &&
+      (needs.build-amd64-self-hosted.result == 'success' || needs.build-amd64-fallback.result == 'success')
     runs-on: ubuntu-22.04
     permissions:
       contents: write

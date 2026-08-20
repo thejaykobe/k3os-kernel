@@ -5,7 +5,7 @@ ARG DOWNLOADS=/usr/src/downloads
 FROM ${UBUNTU} AS ubuntu
 ARG DOWNLOADS
 ARG LINUX_FIRMWARE=linux-firmware=20220329.git681281e4-0ubuntu3.42
-ARG LINUX_SOURCE=linux-source-5.15.0=5.15.0-186.196
+ARG LINUX_SOURCE=linux-source-5.15.0=5.15.0-190.200
 ENV DEBIAN_FRONTEND=noninteractive
 RUN set -x \
  && apt-get --assume-yes update \

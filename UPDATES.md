@@ -1,5 +1,9 @@
 Updates include:
 
+# 2026-09-09
+ARG LINUX_FIRMWARE=linux-firmware=20220329.git681281e4-0ubuntu3.42
+ARG LINUX_SOURCE=linux-source-5.15.0=5.15.0-191.201
+
 # 2026-08-20
 ARG LINUX_FIRMWARE=linux-firmware=20220329.git681281e4-0ubuntu3.42
 ARG LINUX_SOURCE=linux-source-5.15.0=5.15.0-190.200
